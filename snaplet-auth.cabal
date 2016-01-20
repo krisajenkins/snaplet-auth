@@ -21,6 +21,26 @@ library
                      , Snaplet.Authentication.Exception
                      , Snaplet.Authentication.Utils
   build-depends:       base >= 4.7 && < 5
+                     , MonadCatchIO-transformers
+                     , aeson
+                     , bcrypt
+                     , bytestring
+                     , containers
+                     , either
+                     , esqueleto
+                     , jwt
+                     , kashmir
+                     , lens
+                     , persistent
+                     , persistent-template
+                     , snap
+                     , snap-cors
+                     , text
+                     , time
+                     , transformers
+                     , mtl
+                     , uuid
+                     , yaml
   default-language:    Haskell2010
 
 test-suite snaplet-auth-test

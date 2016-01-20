@@ -1,14 +1,17 @@
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
 module Snaplet.Authentication (initAuthentication,Authentication,requireUser,currentUserId) where
 
 import           Control.Applicative
-import           Control.Lens                     (makeLenses, view)
+import           Control.Lens
 import           Control.Monad.CatchIO            hiding (Handler)
 import           Control.Monad.IO.Class
 import qualified Control.Monad.State.Class        as State
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.Either
 import           Crypto.BCrypt
 import           Data.ByteString
 import qualified Data.Map                         as Map
@@ -18,7 +21,7 @@ import           Data.Text.Encoding
 import           Data.Time
 import           Data.UUID
 import           Data.Yaml
-import           Database.Esqueleto
+import           Database.Esqueleto               hiding (migrate)
 import qualified Database.Persist
 import           Kashmir.Snap.Utils
 import           Kashmir.UUID
@@ -149,8 +152,8 @@ requireUser :: SnapletLens v (Authentication b)
             -> Handler b v a
             -> Handler b v a
             -> Handler b v a
-requireUser lens bad good =
-  do authToken <- Snap.with lens readAuthToken
+requireUser aLens bad good =
+  do authToken <- Snap.with aLens readAuthToken
      case authToken of
        Nothing -> bad
        Just _ -> good
@@ -159,8 +162,8 @@ currentUserId :: SnapletLens v (Authentication b)
               -> Handler b v a
               -> (Key Account -> Handler b v a)
               -> Handler b v a
-currentUserId lens bad good =
-  do authToken <- Snap.with lens readAuthToken
+currentUserId aLens bad good =
+  do authToken <- Snap.with aLens readAuthToken
      case authToken of
        Nothing -> bad
        Just t -> good (AccountKey t)
@@ -194,11 +197,24 @@ userDetailsHandler =
                 throw AccountNotFound
               Just a -> writeJSON a
 
-initAuthentication :: AuthConfig -> SnapletLens b ConnectionPool -> SnapletInit b (Authentication b)
+
+migrate
+  :: ConnectionPool -> EitherT Text IO ConnectionPool
+migrate pool =
+  do lift $
+       runSqlPersistMPool (runMigration migrateAccounts)
+                          pool
+     return pool
+
+initAuthentication
+  :: AuthConfig
+  -> SnapletLens b ConnectionPool
+  -> SnapletInit b (Authentication b)
 initAuthentication _authConfig _poolLens =
   makeSnaplet "authentication" "Authentication Snaplet" Nothing $
   do addRoutes [("/login",usernamePasswordLoginHandler)
                ,("/logout",logoutHandler)
                ,("/status",userDetailsHandler <|> unauthorized)]
+     _ <- Snap.withTop _poolLens $ addPostInitHook migrate
      wrapSite $ applyCORS defaultOptions
      return Authentication {..}
