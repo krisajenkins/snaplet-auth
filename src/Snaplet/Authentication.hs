@@ -3,7 +3,7 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
-module Snaplet.Authentication (initAuthentication,Authentication,requireUser,currentUserId) where
+module Snaplet.Authentication (initAuthentication,Authentication,requireUser,currentUserId,AuthConfig(..)) where
 
 import           Control.Applicative
 import           Control.Lens
