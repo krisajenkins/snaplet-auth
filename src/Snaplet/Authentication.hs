@@ -3,7 +3,10 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
-module Snaplet.Authentication (initAuthentication,Authentication,requireUser,currentUserId,AuthConfig(..)) where
+module Snaplet.Authentication
+       (initAuthentication, Authentication, requireUser, currentUserId,
+        AuthConfig(..))
+       where
 
 import           Control.Applicative
 import           Control.Lens
@@ -36,8 +39,8 @@ import           Snaplet.Authentication.Utils
 import           Web.JWT                          as JWT hiding (header)
 
 data AuthConfig =
-  AuthConfig {_jwtSecret :: Secret
-             ,_hostname  :: Text}
+  AuthConfig {_jwtSecretKey :: Text
+             ,_hostname     :: Text}
 makeLenses ''AuthConfig
 
 data Authentication b =
@@ -86,9 +89,12 @@ makeSessionCookie currentHostname theSecret expires key =
 
 ------------------------------------------------------------
 
+getSecretKey :: Handler b (Authentication b) Secret
+getSecretKey = secret <$> view (authConfig . jwtSecretKey)
+
 readAuthToken :: Handler b (Authentication b) (Maybe UUID)
 readAuthToken =
-  do secretKey <- view (authConfig . jwtSecret)
+  do secretKey <- getSecretKey
      maybeCookie <- getCookie sessionCookieName
      return $
        do authenticationCookie <- maybeCookie
@@ -111,7 +117,7 @@ removeAuthToken =
 
 writeAuthToken :: UTCTime -> UUID -> Handler b (Authentication b) ()
 writeAuthToken expires accountId =
-  do secretKey <- view (authConfig . jwtSecret)
+  do secretKey <- getSecretKey
      currentHostname <- view (authConfig . hostname)
      modifyResponse $
        Snap.addResponseCookie (makeSessionCookie currentHostname secretKey expires accountId)
