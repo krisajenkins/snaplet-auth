@@ -16,6 +16,7 @@ import qualified Control.Monad.State.Class        as State
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Either
 import           Crypto.BCrypt
+import           Data.Aeson.TH                    hiding (defaultOptions)
 import           Data.ByteString
 import qualified Data.Map                         as Map
 import           Data.Monoid
@@ -26,6 +27,7 @@ import           Data.UUID
 import           Data.Yaml
 import           Database.Esqueleto               hiding (migrate)
 import qualified Database.Persist
+import           Kashmir.Aeson
 import           Kashmir.Snap.Utils
 import           Kashmir.UUID
 import           Kashmir.Web
@@ -47,6 +49,8 @@ data Authentication b =
   Authentication {_poolLens   :: SnapletLens b ConnectionPool
                  ,_authConfig :: AuthConfig}
 makeLenses ''Authentication
+
+$(deriveJSON (dropPrefixJSONOptions "_") ''AuthConfig)
 
 ------------------------------------------------------------
 -- TODO Move to config
