@@ -5,6 +5,7 @@
 {-# LANGUAGE TemplateHaskell     #-}
 module Snaplet.Authentication
        (initAuthentication, Authentication, requireUser, currentUserId,
+        migrateAccounts,
         AuthConfig(..))
        where
 
