@@ -169,12 +169,12 @@ requireUser aLens bad good =
        Nothing -> bad
        Just _ -> good
 
-currentUserId :: SnapletLens v (Authentication b)
+currentUserId :: SnapletLens b (Authentication b)
               -> Handler b v a
               -> (Key Account -> Handler b v a)
               -> Handler b v a
 currentUserId aLens bad good =
-  do authToken <- Snap.with aLens readAuthToken
+  do authToken <- Snap.withTop aLens readAuthToken
      case authToken of
        Nothing -> bad
        Just t -> good (AccountKey t)
