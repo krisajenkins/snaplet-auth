@@ -28,7 +28,10 @@ import           Data.UUID
 import           Data.Yaml
 import           Database.Esqueleto               hiding (migrate)
 import qualified Database.Persist
+import           GHC.Generics
 import           Kashmir.Aeson
+import qualified Kashmir.Github                   as Github
+import           Kashmir.Snap.Snaplet.Random
 import           Kashmir.Snap.Utils
 import           Kashmir.UUID
 import           Kashmir.Web
@@ -41,17 +44,31 @@ import           Snaplet.Authentication.Schema
 import           Snaplet.Authentication.Utils
 import           Web.JWT                          as JWT hiding (header)
 
+authUrl :: String
+authUrl = "https://github.com/login/oauth/authorize"
+
+accessUrl :: String
+accessUrl = "https://github.com/login/oauth/access_token"
+
 data AuthConfig =
   AuthConfig {_jwtSecretKey :: Text
-             ,_hostname     :: Text}
+             ,_hostname     :: Text
+             ,_github       :: Github.Config}
 makeLenses ''AuthConfig
 
 data Authentication b =
-  Authentication {_poolLens   :: SnapletLens b ConnectionPool
-                 ,_authConfig :: AuthConfig}
+  Authentication {_poolLens                  :: SnapletLens b ConnectionPool
+                 ,_randomNumberGeneratorLens :: SnapletLens b RandomNumberGenerator
+                 ,_authConfig                :: AuthConfig}
 makeLenses ''Authentication
 
 $(deriveJSON (dropPrefixJSONOptions "_") ''AuthConfig)
+
+data AuthenticationOptions = AuthenticationOptions {_githubAuthentication :: String}
+  deriving (Eq,Show,Generic)
+
+$(deriveJSON (dropPrefixJSONOptions "_")
+             ''AuthenticationOptions)
 
 ------------------------------------------------------------
 -- TODO Move to config
@@ -129,10 +146,67 @@ writeAuthToken expires accountId =
 
 ------------------------------------------------------------
 
-processUsernamePassword :: ByteString -> ByteString -> Handler b (Authentication b) ()
-processUsernamePassword username password =
+-- TODO Replace uses of this code with this call.
+getConnection :: Handler b (Authentication b) ConnectionPool
+getConnection =
   do pool <- view poolLens
      connection <- Snap.withTop pool State.get
+     return connection
+
+makeAuthenticationOptions :: Github.Config -> AuthenticationOptions
+makeAuthenticationOptions config =
+  AuthenticationOptions $
+  mconcat [authUrl,"?scope=user:email&client_id=",view Github.clientId config]
+
+authRequestUrlsHandler :: Handler b (Authentication b) ()
+authRequestUrlsHandler =
+  method GET $
+  do githubConfig <- view (authConfig . github)
+     writeJSON $ makeAuthenticationOptions githubConfig
+
+upsertAccount :: Github.Config
+              -> ConnectionPool
+              -> UUID
+              -> ByteString
+              -> IO (UTCTime,Key Account)
+upsertAccount githubConfig connection uuid code =
+  do accessToken <-
+       view Github.accessToken <$>
+       Github.requestAccess githubConfig code
+     user <- Github.getUser accessToken
+     now <- getCurrentTime
+     accountKey <-
+       runSqlPersistMPool (createOrUpdateGithubUser uuid now accessToken user)
+                          connection
+     return (now,accountKey)
+
+processGithubAccessToken :: ByteString -> Handler b (Authentication b) ()
+processGithubAccessToken code =
+  do githubConfig <- view (authConfig . github)
+     currentHostname <- view (authConfig . hostname)
+     connection <- getConnection
+     randomNumberGenerator <- view randomNumberGeneratorLens
+     uuid <- Snap.withTop randomNumberGenerator getRandom
+     (now,accountKey) <-
+       liftIO $ upsertAccount githubConfig connection uuid code
+     logError $
+       "Upserted account key: " <>
+       (toStrictByteString . unAccountKey) accountKey
+     writeAuthToken (addUTCTime twoWeeks now)
+                    (unAccountKey accountKey)
+     redirect $ encodeUtf8 currentHostname
+
+githubCallbackHandler :: Handler b (Authentication b) ()
+githubCallbackHandler =
+  method GET $
+  requireParam "code" >>=
+  processGithubAccessToken
+
+------------------------------------------------------------
+
+processUsernamePassword :: ByteString -> ByteString -> Handler b (Authentication b) ()
+processUsernamePassword username password =
+  do connection <- getConnection
      matchingAccount <-
        liftIO $
        runSqlPersistMPool (lookupByUsername (decodeUtf8 username))
@@ -188,8 +262,7 @@ userDetailsHandler :: Handler b (Authentication b) ()
 userDetailsHandler =
   method GET $
   do logError "Looking up user details."
-     pool <- view poolLens
-     connection <- Snap.withTop pool State.get
+     connection <- getConnection
      authToken <- readAuthToken
      logError $
        "Got auth token: " <>
@@ -220,12 +293,14 @@ migrate pool =
 initAuthentication
   :: AuthConfig
   -> SnapletLens b ConnectionPool
+  -> SnapletLens b RandomNumberGenerator
   -> SnapletInit b (Authentication b)
-initAuthentication _authConfig _poolLens =
+initAuthentication _authConfig _poolLens _randomNumberGeneratorLens =
   makeSnaplet "authentication" "Authentication Snaplet" Nothing $
   do addRoutes [("/login",usernamePasswordLoginHandler)
+               ,("/callback/github",githubCallbackHandler)
                ,("/logout",logoutHandler)
-               ,("/status",userDetailsHandler <|> unauthorized)]
+               ,("/status",userDetailsHandler <|> authRequestUrlsHandler)]
      _ <- Snap.withTop _poolLens $ addPostInitHook migrate
      wrapSite $ applyCORS defaultOptions
      return Authentication {..}
