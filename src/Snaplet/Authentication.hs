@@ -180,10 +180,9 @@ upsertAccount githubConfig connection uuid code =
                           connection
      return (now,accountKey)
 
-processGithubAccessToken :: ByteString -> Handler b (Authentication b) ()
-processGithubAccessToken code =
+processGithubAccessToken :: Text -> ByteString -> Handler b (Authentication b) ()
+processGithubAccessToken redirectTarget code =
   do githubConfig <- view (authConfig . github)
-     currentHostname <- view (authConfig . hostname)
      connection <- getConnection
      randomNumberGenerator <- view randomNumberGeneratorLens
      uuid <- Snap.withTop randomNumberGenerator getRandom
@@ -194,13 +193,13 @@ processGithubAccessToken code =
        (toStrictByteString . unAccountKey) accountKey
      writeAuthToken (addUTCTime twoWeeks now)
                     (unAccountKey accountKey)
-     redirect $ encodeUtf8 currentHostname
+     redirect $ encodeUtf8 redirectTarget
 
-githubCallbackHandler :: Handler b (Authentication b) ()
-githubCallbackHandler =
+githubCallbackHandler :: Text -> Handler b (Authentication b) ()
+githubCallbackHandler redirectTarget =
   method GET $
   requireParam "code" >>=
-  processGithubAccessToken
+  processGithubAccessToken redirectTarget
 
 ------------------------------------------------------------
 
@@ -291,14 +290,15 @@ migrate pool =
      return pool
 
 initAuthentication
-  :: AuthConfig
+  :: Text
+  -> AuthConfig
   -> SnapletLens b ConnectionPool
   -> SnapletLens b RandomNumberGenerator
   -> SnapletInit b (Authentication b)
-initAuthentication _authConfig _poolLens _randomNumberGeneratorLens =
+initAuthentication redirectTarget _authConfig _poolLens _randomNumberGeneratorLens =
   makeSnaplet "authentication" "Authentication Snaplet" Nothing $
   do addRoutes [("/login",usernamePasswordLoginHandler)
-               ,("/callback/github",githubCallbackHandler)
+               ,("/callback/github",githubCallbackHandler redirectTarget)
                ,("/logout",logoutHandler)
                ,("/status",userDetailsHandler <|> authRequestUrlsHandler)]
      _ <- Snap.withTop _poolLens $ addPostInitHook migrate
