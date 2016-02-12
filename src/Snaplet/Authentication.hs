@@ -44,12 +44,6 @@ import           Snaplet.Authentication.Schema
 import           Snaplet.Authentication.Utils
 import           Web.JWT                          as JWT hiding (header)
 
-authUrl :: String
-authUrl = "https://github.com/login/oauth/authorize"
-
-accessUrl :: String
-accessUrl = "https://github.com/login/oauth/access_token"
-
 data AuthConfig =
   AuthConfig {_jwtSecretKey :: Text
              ,_hostname     :: Text
@@ -156,7 +150,7 @@ getConnection =
 makeAuthenticationOptions :: Github.Config -> AuthenticationOptions
 makeAuthenticationOptions config =
   AuthenticationOptions $
-  mconcat [authUrl,"?scope=user:email&client_id=",view Github.clientId config]
+  mconcat [view Github.authUrl config,"?scope=user:email&client_id=",view Github.clientId config]
 
 authRequestUrlsHandler :: Handler b (Authentication b) ()
 authRequestUrlsHandler =
