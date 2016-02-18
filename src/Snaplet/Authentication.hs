@@ -41,7 +41,6 @@ import           Snap.CORS
 import           Snaplet.Authentication.Exception
 import           Snaplet.Authentication.Queries
 import           Snaplet.Authentication.Schema
-import           Snaplet.Authentication.Utils
 import           Web.JWT                          as JWT hiding (header)
 
 data AuthConfig =

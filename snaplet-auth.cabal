@@ -19,7 +19,6 @@ library
   other-modules:       Snaplet.Authentication.Queries
                      , Snaplet.Authentication.Schema
                      , Snaplet.Authentication.Exception
-                     , Snaplet.Authentication.Utils
   build-depends:       base >= 4.7 && < 5
                      , MonadCatchIO-transformers
                      , aeson
