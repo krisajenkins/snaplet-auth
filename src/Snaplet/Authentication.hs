@@ -4,7 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 module Snaplet.Authentication
-       (initAuthentication, Authentication, requireUser, currentUserId,
+       (initAuthentication, Authentication, requireUser, withUser,
         migrateAccounts, Account(..), unAccountKey, AccountUidpwd(..),
         AuthConfig(..))
        where
@@ -225,25 +225,22 @@ usernamePasswordLoginHandler =
 ------------------------------------------------------------
 -- | Require that an authenticated AuthUser is present in the current session.
 -- This function has no DB cost - only checks to see if the client has passed a valid auth token.
-requireUser :: SnapletLens v (Authentication b)
-            -> Handler b v a
-            -> Handler b v a
-            -> Handler b v a
-requireUser aLens bad good =
-  do authToken <- Snap.with aLens readAuthToken
-     case authToken of
-       Nothing -> bad
-       Just _ -> good
-
-currentUserId :: SnapletLens b (Authentication b)
+requireUser :: SnapletLens b (Authentication b)
               -> Handler b v a
               -> (Key Account -> Handler b v a)
               -> Handler b v a
-currentUserId aLens bad good =
+requireUser aLens bad good =
   do authToken <- Snap.withTop aLens readAuthToken
      case authToken of
        Nothing -> bad
        Just t -> good (AccountKey t)
+
+withUser :: SnapletLens b (Authentication b)
+         -> (Maybe (Key Account) -> Handler b v a)
+         -> Handler b v a
+withUser aLens handler =
+  do maybeKey <- Snap.withTop aLens readAuthToken
+     handler (AccountKey <$> maybeKey)
 
 ------------------------------------------------------------
 
