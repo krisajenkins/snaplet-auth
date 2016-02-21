@@ -245,7 +245,7 @@ withUser aLens handler =
 ------------------------------------------------------------
 
 logoutHandler :: Handler b (Authentication b) ()
-logoutHandler = method POST removeAuthToken
+logoutHandler = removeAuthToken
 
 userDetailsHandler :: Handler b (Authentication b) ()
 userDetailsHandler =
