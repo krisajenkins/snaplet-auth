@@ -6,7 +6,7 @@
 module Snaplet.Authentication
        (initAuthentication, Authentication, requireUser, withUser,
         migrateAccounts, Account(..), unAccountKey, AccountUidpwd(..),
-        AuthConfig(..))
+        AccountGithub(..), AuthConfig(..))
        where
 
 import           Control.Lens
