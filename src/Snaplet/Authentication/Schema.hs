@@ -29,6 +29,7 @@ import           GHC.Generics                (Generic)
 import           Kashmir.Aeson
 import           Kashmir.Database.Postgresql
 import           Kashmir.Github              as Github
+import           Kashmir.Github.Types.User   as Github
 import           Kashmir.UUID
 import           Prelude                     hiding (id)
 
