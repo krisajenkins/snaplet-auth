@@ -5,8 +5,7 @@
 {-# LANGUAGE TemplateHaskell     #-}
 module Snaplet.Authentication
        (initAuthentication, Authentication, requireUser, withUser,
-        migrateAccounts, Account(..), unAccountKey, AccountUidpwd(..),
-        AccountGithub(..), AuthConfig(..))
+        migrateAccounts, module X, AuthConfig(..))
        where
 
 import           Control.Lens
@@ -38,7 +37,7 @@ import           Snap                             hiding (with)
 import           Snap.CORS
 import           Snaplet.Authentication.Exception
 import           Snaplet.Authentication.Queries
-import           Snaplet.Authentication.Schema
+import           Snaplet.Authentication.Schema    as X
 import           Web.JWT                          as JWT hiding (header)
 
 data AuthConfig =
