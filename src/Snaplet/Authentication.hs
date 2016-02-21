@@ -9,7 +9,6 @@ module Snaplet.Authentication
         AuthConfig(..))
        where
 
-import           Control.Applicative
 import           Control.Lens
 import           Control.Monad.CatchIO            hiding (Handler)
 import           Control.Monad.IO.Class
@@ -21,7 +20,7 @@ import           Data.Aeson.TH                    hiding (defaultOptions)
 import           Data.ByteString
 import qualified Data.Map                         as Map
 import           Data.Monoid
-import           Data.Text                        (Text)
+import           Data.Text                        (Text, pack)
 import           Data.Text.Encoding
 import           Data.Time
 import           Data.UUID
@@ -36,7 +35,6 @@ import           Kashmir.Snap.Utils
 import           Kashmir.UUID
 import           Kashmir.Web
 import           Snap                             hiding (with)
-import qualified Snap
 import           Snap.CORS
 import           Snaplet.Authentication.Exception
 import           Snaplet.Authentication.Queries
@@ -146,16 +144,17 @@ getConnection =
      connection <- Snap.withTop pool State.get
      return connection
 
-makeAuthenticationOptions :: Github.Config -> AuthenticationOptions
-makeAuthenticationOptions config =
-  AuthenticationOptions $
-  mconcat [view Github.authUrl config,"?scope=user:email&client_id=",view Github.clientId config]
+githubLoginUrl :: Github.Config -> Text
+githubLoginUrl config =
+  Data.Text.pack $
+  mconcat [view Github.authUrl config
+          ,"?scope=user:email&client_id="
+          ,view Github.clientId config]
 
-authRequestUrlsHandler :: Handler b (Authentication b) ()
-authRequestUrlsHandler =
-  method GET $
+githubLoginHandler :: Handler b (Authentication b) ()
+githubLoginHandler =
   do githubConfig <- view (authConfig . github)
-     writeJSON $ makeAuthenticationOptions githubConfig
+     redirect . encodeUtf8 $ githubLoginUrl githubConfig
 
 upsertAccount :: Github.Config
               -> ConnectionPool
@@ -287,10 +286,11 @@ initAuthentication
   -> SnapletInit b (Authentication b)
 initAuthentication redirectTarget _authConfig _poolLens _randomNumberGeneratorLens =
   makeSnaplet "authentication" "Authentication Snaplet" Nothing $
-  do addRoutes [("/login",usernamePasswordLoginHandler)
+  do addRoutes [("/login/uidpwd",usernamePasswordLoginHandler)
+               ,("/login/github",githubLoginHandler)
                ,("/callback/github",githubCallbackHandler redirectTarget)
                ,("/logout",logoutHandler)
-               ,("/status",userDetailsHandler <|> authRequestUrlsHandler)]
+               ,("/status",userDetailsHandler)]
      _ <- Snap.withTop _poolLens $ addPostInitHook migrate
      wrapSite $ applyCORS defaultOptions
      return Authentication {..}
