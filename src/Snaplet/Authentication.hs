@@ -11,6 +11,7 @@ module Snaplet.Authentication
 import           Control.Lens
 import           Control.Monad.CatchIO            hiding (Handler)
 import           Control.Monad.IO.Class
+import           Control.Monad.Reader
 import qualified Control.Monad.State.Class        as State
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Either
@@ -164,7 +165,7 @@ upsertAccount githubConfig connection uuid code =
   do accessToken <-
        view Github.accessToken <$>
        Github.requestAccess githubConfig code
-     user <- Github.getUser accessToken
+     user <- runReaderT Github.getUserDetails accessToken
      now <- getCurrentTime
      accountKey <-
        runSqlPersistMPool (createOrUpdateGithubUser uuid now accessToken user)
