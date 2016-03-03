@@ -13,7 +13,6 @@ import           Control.Monad.CatchIO            hiding (Handler)
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import qualified Control.Monad.State.Class        as State
-import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Either
 import           Crypto.BCrypt
 import           Data.Aeson.TH                    hiding (defaultOptions)
@@ -141,8 +140,7 @@ writeAuthToken expires accountId =
 getConnection :: Handler b (Authentication b) ConnectionPool
 getConnection =
   do pool <- view poolLens
-     connection <- Snap.withTop pool State.get
-     return connection
+     Snap.withTop pool State.get
 
 githubLoginUrl :: Github.Config -> Text
 githubLoginUrl config =
@@ -206,7 +204,7 @@ processUsernamePassword username password =
        Nothing -> unauthorized
        Just (account,accountUidpwd) ->
          -- Validate password.
-         if validatePassword (encodeUtf8 (accountUidpwdPassword $ accountUidpwd))
+         if validatePassword (encodeUtf8 (accountUidpwdPassword accountUidpwd))
                              password
             then do now <- liftIO getCurrentTime
                     writeAuthToken (addUTCTime twoWeeks now)

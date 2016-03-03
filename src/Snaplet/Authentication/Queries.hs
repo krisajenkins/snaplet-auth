@@ -12,7 +12,7 @@ import           Snaplet.Authentication.Schema
 
 lookupByUsername :: Text -> SqlPersistM (Maybe (Account,AccountUidpwd))
 lookupByUsername username =
-  onlyOne . (fmap unwrap) <$>
+  onlyOne . fmap unwrap <$>
   (select . from $
    \(account `InnerJoin` accountUidpwd) ->
      do on $
