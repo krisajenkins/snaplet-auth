@@ -148,7 +148,7 @@ githubLoginUrl :: Github.Config -> Text
 githubLoginUrl config =
   Data.Text.pack $
   mconcat [view Github.authUrl config
-          ,"?scope=user:email,read:org,&client_id="
+          ,"?scope=user:email,read:org,admin:repo_hook,&client_id="
           ,view Github.clientId config]
 
 githubLoginHandler :: Handler b (Authentication b) ()
