@@ -5,7 +5,7 @@
 {-# LANGUAGE TemplateHaskell     #-}
 module Snaplet.Authentication
        (initAuthentication, Authentication, requireUser, withUser,
-        migrateAccounts, module X, AuthConfig(..))
+        module X, AuthConfig(..))
        where
 
 import           Control.Lens
