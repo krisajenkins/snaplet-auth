@@ -1,4 +1,4 @@
-module Snaplet.Authentication.Queries (lookupByUsername,hashFor,createUidpwdUser) where
+module Snaplet.Authentication.Queries (lookupByUsername,hashFor,createUidpwdUser,getGithubAccessToken) where
 
 import           Control.Exception
 import           Crypto.BCrypt
@@ -6,6 +6,7 @@ import           Data.Text                        (Text)
 import           Data.Text.Encoding
 import           Data.Time
 import           Database.Esqueleto
+import           Kashmir.Github.Types
 import           Kashmir.UUID
 import           Snaplet.Authentication.Exception
 import           Snaplet.Authentication.Schema
@@ -46,3 +47,12 @@ createUidpwdUser uuid created username hashedPassword =
                             ,accountUidpwdUsername = username
                             ,accountUidpwdPassword = hash hashedPassword}
      return accountKey
+
+getGithubAccessToken
+  :: Key Account -> SqlPersistM (Maybe AccessToken)
+getGithubAccessToken key =
+  onlyOne . fmap unValue <$>
+  (select . from $
+   \accountGithub ->
+     do where_ (accountGithub ^. AccountGithubAccountId ==. val key)
+        return (accountGithub ^. AccountGithubAccessToken))

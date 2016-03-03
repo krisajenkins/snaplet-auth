@@ -4,9 +4,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 module Snaplet.Authentication
-       (initAuthentication, Authentication, requireUser, withUser,
-        module X, AuthConfig(..))
-       where
+       (initAuthentication, Authentication, requireUser, withUser, module Q, module X, AuthConfig(..))
+           where
 
 import           Control.Lens
 import           Control.Monad.CatchIO            hiding (Handler)
@@ -37,6 +36,7 @@ import           Snap                             hiding (with)
 import           Snap.CORS
 import           Snaplet.Authentication.Exception
 import           Snaplet.Authentication.Queries
+import qualified Snaplet.Authentication.Queries   as Q (getGithubAccessToken)
 import           Snaplet.Authentication.Schema    as X
 import           Web.JWT                          as JWT hiding (header)
 
