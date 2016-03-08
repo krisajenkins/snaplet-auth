@@ -53,7 +53,7 @@ share [mkPersist sqlSettings,mkMigrate "migrateAccounts"]
     githubId Int
     accountId AccountId sqltype=uuid
     login Text
-    email Text Maybe
+    email Email
     blog Text Maybe
     accessToken AccessToken sqltype=text
     Primary githubId
