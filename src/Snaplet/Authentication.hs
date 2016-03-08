@@ -4,8 +4,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 module Snaplet.Authentication
-       (initAuthentication, Authentication, requireUser, withUser, module Q, module X, AuthConfig(..))
-           where
+       (initAuthentication, Authentication, requireUser, withUser,
+        module Q, module X, AuthConfig(..))
+       where
 
 import           Control.Lens
 import           Control.Monad.CatchIO            hiding (Handler)
