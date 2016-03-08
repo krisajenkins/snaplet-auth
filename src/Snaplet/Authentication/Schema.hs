@@ -107,8 +107,7 @@ createPasswordUser uuid created username password =
                                (encodeUtf8 password)
      accountKey <- insert $ Account uuid created
      _ <-
-       insert $
-       AccountUidpwd {accountUidpwdAccountId = unAccountKey accountKey
-                     ,accountUidpwdUsername = username
-                     ,accountUidpwdPassword = decodeUtf8 hashedPassword}
+       insert AccountUidpwd {accountUidpwdAccountId = unAccountKey accountKey
+                            ,accountUidpwdUsername = username
+                            ,accountUidpwdPassword = decodeUtf8 hashedPassword}
      return accountKey
