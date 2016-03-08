@@ -28,8 +28,9 @@ import           Database.Persist.TH
 import           GHC.Generics                (Generic)
 import           Kashmir.Aeson
 import           Kashmir.Database.Postgresql
+import           Kashmir.Email
 import           Kashmir.Github              as Github
-import           Kashmir.Github.Types.User   as Github
+import           Kashmir.Github.Types.User   as GU
 import           Kashmir.UUID
 import           Prelude                     hiding (id)
 
@@ -64,14 +65,14 @@ $(deriveJSON (dropPrefixJSONOptions "account")
              ''Account)
 
 -- TODO Update more details.
-createOrUpdateGithubUser :: UUID -> UTCTime -> AccessToken -> Github.User -> SqlPersistM (Key Account)
+createOrUpdateGithubUser :: UUID -> UTCTime -> AccessToken -> GU.User -> SqlPersistM (Key Account)
 createOrUpdateGithubUser uuid created theToken githubUser =
   let savepointName = "upsert_github"
   in do void $ createSavepoint savepointName
         accountKey <- insert $ Account uuid created
         maybeGithubKey <-
           insertUnlessDuplicate
-            AccountGithub {accountGithubGithubId = view id githubUser
+            AccountGithub {accountGithubGithubId = GU._githubUserId githubUser
                           ,accountGithubAccountId = accountKey
                           ,accountGithubAccessToken = theToken
                           ,accountGithubLogin = view login githubUser
@@ -82,7 +83,7 @@ createOrUpdateGithubUser uuid created theToken githubUser =
           Nothing ->
             do let match g =
                      where_ (g ^. AccountGithubGithubId ==.
-                             val (view id githubUser))
+                             val (view githubUserId githubUser))
                void $ rollbackToSavepoint savepointName
                update $
                  \g ->
