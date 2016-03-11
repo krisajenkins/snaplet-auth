@@ -28,9 +28,7 @@ import           Database.Persist.TH
 import           GHC.Generics                (Generic)
 import           Kashmir.Aeson
 import           Kashmir.Database.Postgresql
-import           Kashmir.Email
 import           Kashmir.Github              as Github
-import           Kashmir.Github.Types.User   as GU
 import           Kashmir.UUID
 import           Prelude                     hiding (id)
 
@@ -50,14 +48,11 @@ share [mkPersist sqlSettings,mkMigrate "migrateAccounts"]
     deriving Read Show Eq Generic
 
   AccountGithub
-    githubId Int
+    githubUserLogin Text sqltype=text
     accountId AccountId sqltype=uuid
-    login Text
-    email Email
-    blog Text Maybe
     accessToken AccessToken sqltype=text
-    Primary githubId
-    Unique AccountIdUnique accountId
+    Primary accountId
+    Unique GithubUserUnique githubUserLogin
     deriving Read Show Eq Generic
   |]
 
@@ -65,33 +60,30 @@ $(deriveJSON (dropPrefixJSONOptions "account")
              ''Account)
 
 -- TODO Update more details.
-createOrUpdateGithubUser :: UUID -> UTCTime -> AccessToken -> GU.User -> SqlPersistM (Key Account)
+createOrUpdateGithubUser :: UUID -> UTCTime -> AccessToken -> GithubUser -> SqlPersistM (Key Account)
 createOrUpdateGithubUser uuid created theToken githubUser =
   let savepointName = "upsert_github"
   in do void $ createSavepoint savepointName
         accountKey <- insert $ Account uuid created
         maybeGithubKey <-
           insertUnlessDuplicate
-            AccountGithub {accountGithubGithubId = GU._githubUserId githubUser
-                          ,accountGithubAccountId = accountKey
-                          ,accountGithubAccessToken = theToken
-                          ,accountGithubLogin = view login githubUser
-                          ,accountGithubBlog = view blog githubUser
-                          ,accountGithubEmail = view email githubUser}
+            AccountGithub {accountGithubAccountId = accountKey
+                          ,accountGithubGithubUserLogin =
+                             view githubUserLogin githubUser
+                          ,accountGithubAccessToken = theToken}
         case maybeGithubKey of
           Just _ -> releaseSavepoint savepointName >> return accountKey
           Nothing ->
             do let match g =
-                     where_ (g ^. AccountGithubGithubId ==.
-                             val (view githubUserId githubUser))
+                     where_ (g ^. AccountGithubGithubUserLogin ==.
+                             val (view githubUserLogin githubUser))
                void $ rollbackToSavepoint savepointName
                update $
                  \g ->
                    do set g
                           [AccountGithubAccessToken =. val theToken
-                          ,AccountGithubBlog =. val (view blog githubUser)
-                          ,AccountGithubEmail =. val (view email githubUser)
-                          ,AccountGithubLogin =. val (view login githubUser)]
+                          ,AccountGithubGithubUserLogin =.
+                           val (view githubUserLogin githubUser)]
                       match g
                accountIds <-
                  select . from $
