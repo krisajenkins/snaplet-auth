@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -121,7 +122,9 @@ readAuthToken =
             (String s) -> fromText s
             _ -> Nothing
 
-removeAuthToken :: Handler b v ()
+removeAuthToken
+    :: MonadSnap m
+    => m ()
 removeAuthToken =
   let old = UTCTime (ModifiedJulianDay 0) 0
   in modifyResponse . addResponseCookie $
@@ -242,7 +245,9 @@ withUser aLens handler =
 
 ------------------------------------------------------------
 
-logoutHandler :: Handler b (Authentication b) ()
+logoutHandler
+    :: MonadSnap m
+    => m ()
 logoutHandler =
   do removeAuthToken
      redirect "/"
