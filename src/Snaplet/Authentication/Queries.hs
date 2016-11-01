@@ -1,6 +1,7 @@
 module Snaplet.Authentication.Queries
   ( lookupByUsername
   , hashFor
+  , resetUidpwdUserPassword
   , createUidpwdUser
   , getGithubAccessToken
   ) where
@@ -59,6 +60,19 @@ createUidpwdUser uuid created username hashedPassword = do
             , accountUidpwdPassword = hash hashedPassword
             }
     return accountKey
+
+resetUidpwdUserPassword :: UUID -> HashedPassword -> SqlPersistM (Maybe Account)
+resetUidpwdUserPassword userId hashedPassword = do
+    updatedRows <-
+        updateCount $
+        \accountUidpwd -> do
+            set
+                accountUidpwd
+                [AccountUidpwdPassword =. val (hash hashedPassword)]
+            where_ ((accountUidpwd ^. AccountUidpwdAccountId) ==. val userId)
+    case updatedRows of
+        0 -> return Nothing
+        1 -> get (AccountKey userId)
 
 getGithubAccessToken :: Key Account -> SqlPersistM (Maybe AccessToken)
 getGithubAccessToken key =

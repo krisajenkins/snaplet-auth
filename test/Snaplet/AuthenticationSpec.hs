@@ -24,12 +24,12 @@ makeSessionJSONSpec :: Spec
 makeSessionJSONSpec =
     describe "makeSessionJSON" $
     do it "should complete a two-way session encode" $
-           theClaims `shouldBe`
-           Just (Map.fromList [(sessionIdName, Aeson.String rawUUID)])
+           shouldBe
+               (JWT.unregisteredClaims <$> theClaims)
+               (Just (Map.fromList [(sessionIdName, Aeson.String rawUUID)]))
   where
     rawUUID = "123e4567-e89b-12d3-a456-426655440000"
     Just uuid = UUID.fromText rawUUID
     secret = JWT.secret "ASDFASDFASDF"
-    encoded = makeSessionJSON "SomeHost" secret uuid
-    decoded = JWT.decodeAndVerifySignature secret encoded
-    theClaims = JWT.unregisteredClaims . JWT.claims <$> decoded
+    encoded = makeSessionJSON "www.somehost.com" secret uuid
+    theClaims = extractClaims secret encoded

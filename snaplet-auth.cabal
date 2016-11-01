@@ -32,6 +32,7 @@ library
                      , lens
                      , persistent
                      , persistent-template
+                     , mime-mail
                      , snap
                      , snap-cors
                      , text

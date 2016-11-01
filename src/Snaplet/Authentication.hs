@@ -12,6 +12,7 @@ module Snaplet.Authentication
   , withUser
   , makeSessionJSON
   , sessionIdName
+  , extractClaims
   , module Q
   , module X
   , AuthConfig(..)
@@ -23,13 +24,16 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import qualified Control.Monad.State.Class        as State
 import           Control.Monad.Trans.Either
+import           Control.Monad.Trans.Maybe
 import           Crypto.BCrypt
+import qualified Data.Aeson                       as Aeson
 import           Data.Aeson.TH                    hiding (defaultOptions)
 import           Data.ByteString
 import qualified Data.Map                         as Map
 import           Data.Monoid
-import           Data.Text                        (Text, pack)
+import           Data.Text                        as T
 import           Data.Text.Encoding
+import qualified Data.Text.Lazy                   as LT
 import           Data.Time
 import           Data.UUID
 import           Data.Yaml
@@ -42,6 +46,7 @@ import           Kashmir.Snap.Snaplet.Random
 import           Kashmir.Snap.Utils
 import           Kashmir.UUID
 import           Kashmir.Web
+import           Network.Mail.Mime
 import           Snap                             hiding (with)
 import           Snap.CORS
 import           Snaplet.Authentication.Exception
@@ -82,6 +87,9 @@ sessionCookieName = "sessionId"
 sessionIdName :: Text
 sessionIdName = "accountId"
 
+resetPasswordJWTKey :: Text
+resetPasswordJWTKey = "ResetPassword"
+
 twoWeeks :: NominalDiffTime
 twoWeeks = 60 * 60 * 24 * 7 * 2
 
@@ -106,7 +114,19 @@ makeSessionJSON currentHostname theSecret key =
         (JWT.def
          { iss = stringOrURI currentHostname
          , unregisteredClaims =
-             Map.fromList [(sessionIdName, String (toText key))]
+             Map.fromList [(sessionIdName, Aeson.String (toText key))]
+         })
+
+makePasswordResetJSON :: Text -> Secret -> UUID -> JSON
+makePasswordResetJSON currentHostname theSecret key =
+    encodeSigned
+        HS256
+        theSecret
+        (JWT.def
+         { iss = stringOrURI currentHostname
+         , sub = stringOrURI (toText key)
+         , unregisteredClaims =
+             Map.fromList [(resetPasswordJWTKey, Aeson.Bool True)]
          })
 
 makeSessionCookie :: Text -> Secret -> UTCTime -> UUID -> Cookie
@@ -118,10 +138,9 @@ makeSessionCookie currentHostname theSecret expires key =
 
 ------------------------------------------------------------
 
-extractClaims :: Secret -> Text -> Maybe ClaimsMap
-extractClaims secretKey rawText = do
-    verifiedToken <- decodeAndVerifySignature secretKey rawText
-    return . unregisteredClaims . claims $ verifiedToken
+extractClaims :: Secret -> Text -> Maybe JWTClaimsSet
+extractClaims secretKey rawText =
+    claims <$> decodeAndVerifySignature secretKey rawText
 
 ------------------------------------------------------------
 
@@ -138,7 +157,7 @@ readAuthToken = do
                extractClaims
                    secretKey
                    (decodeUtf8 $ cookieValue authenticationCookie)
-           sessionId <- Map.lookup sessionIdName theClaims
+           sessionId <- Map.lookup sessionIdName (unregisteredClaims theClaims)
            case sessionId of
                (String s) -> fromText s
                _ -> Nothing
@@ -171,7 +190,7 @@ getConnection = do
 
 githubLoginUrl :: Github.Config -> Text
 githubLoginUrl config =
-    Data.Text.pack $
+    T.pack $
     mconcat
         [ view Github.authUrl config
         , "?scope=user:email,read:org,admin:repo_hook,&client_id="
@@ -224,19 +243,19 @@ processUsernamePassword username password = do
         liftIO $ runSqlPersistMPool (lookupByUsername (decodeUtf8 username)) connection
     case matchingAccount of
         Nothing -> unauthorized
-        Just (account, accountUidpwd)
         -- Validate password.
-         ->
+        Just (account, accountUidpwd) ->
             if validatePassword
                    (encodeUtf8 (accountUidpwdPassword accountUidpwd))
                    password
-                then do
-                    now <- liftIO getCurrentTime
-                    writeAuthToken
-                        (addUTCTime twoWeeks now)
-                        (accountAccountId account)
-                    writeJSON account
+                then authorizedAccountResponse account
                 else unauthorized
+
+authorizedAccountResponse :: Account -> Handler b (Authentication b) ()
+authorizedAccountResponse account = do
+    now <- liftIO getCurrentTime
+    writeAuthToken (addUTCTime twoWeeks now) (accountAccountId account)
+    writeJSON account
 
 usernamePasswordLoginHandler :: Handler b (Authentication b) ()
 usernamePasswordLoginHandler =
@@ -244,6 +263,96 @@ usernamePasswordLoginHandler =
     do username <- requirePostParam "username"
        password <- requirePostParam "password"
        processUsernamePassword username password
+
+------------------------------------------------------------
+data PasswordResetRequest = PasswordResetRequest
+    { _username :: Text
+    } deriving (Show, Eq)
+
+makeLenses ''PasswordResetRequest
+$(deriveJSON (dropPrefixJSONOptions "_") ''PasswordResetRequest)
+
+usernamePasswordResetHandler :: Handler b (Authentication b) ()
+usernamePasswordResetHandler =
+    method POST $
+    do secretKey <- getSecretKey
+       passwordResetRequest <- requireBoundedJSON 1024
+       connection <- getConnection
+       currentHostname <- view (authConfig . hostname)
+       maybeAccount <-
+           liftIO $
+           runSqlPersistMPool
+               (lookupByUsername (view username passwordResetRequest))
+               connection
+       case maybeAccount of
+           Nothing -> notfound
+           Just (account, _) ->
+               let resetToken =
+                       makePasswordResetJSON
+                           currentHostname
+                           secretKey
+                           (accountAccountId account)
+                   mailFrom =
+                       Address
+                           (Just "CommercialStreet")
+                           "noreply@commercialstreet.co.uk"
+                   mailTo =
+                       [Address (Just "Kris Jenkins") "krisajenkins@gmail.com"]
+                   mailCc = []
+                   mailBcc = []
+                   mailHeaders = [("Subject", "Password Reset Requested")]
+                   mailParts =
+                       [[plainPart ("Hello\n" <> LT.fromStrict resetToken)]]
+                   mail =
+                       Mail
+                       { ..
+                       }
+               in do liftIO $ sendmail =<< renderMail' mail
+                     writeJSON (Map.fromList [("email_sent" :: Text, True)])
+
+data PasswordResetCompletion = PasswordResetCompletion
+    { _token       :: Text
+    , _newPassword :: Text
+    } deriving (Show, Eq)
+
+makeLenses ''PasswordResetCompletion
+$(deriveJSON (dropPrefixJSONOptions "_") ''PasswordResetCompletion)
+
+usernamePasswordResetCompletionHandler :: Handler b (Authentication b) ()
+usernamePasswordResetCompletionHandler =
+    method POST $
+    do secretKey <- getSecretKey
+       passwordResetCompletion <- requireBoundedJSON 1024
+       connection <- getConnection
+       case (do theClaims <-
+                    extractClaims secretKey (view token passwordResetCompletion)
+                subject <- stringOrURIToText <$> JWT.sub theClaims
+                uuid <- fromText subject
+                isResetCompletion <-
+                    Map.lookup
+                        resetPasswordJWTKey
+                        (unregisteredClaims theClaims)
+                case isResetCompletion of
+                    (Aeson.Bool True) -> Just uuid
+                    _ -> Nothing) of
+           Just uuid
+           -- Verified!
+            -> do
+               maybeHashedPassword <-
+                   liftIO $ hashFor (view newPassword passwordResetCompletion)
+               case maybeHashedPassword of
+                   Nothing -> unauthorized
+                   Just hashedPassword -> do
+                       maybeAccount <-
+                           liftIO $
+                           runSqlPersistMPool
+                               (resetUidpwdUserPassword uuid hashedPassword)
+                               connection
+                       case maybeAccount of
+                           Just account -> authorizedAccountResponse account
+                           Nothing -> unauthorized
+           Nothing -> unauthorized
+
 
 ------------------------------------------------------------
 -- | Require that an authenticated AuthUser is present in the current session.
@@ -309,6 +418,8 @@ initAuthentication redirectTarget _authConfig _poolLens _randomNumberGeneratorLe
     makeSnaplet "authentication" "Authentication Snaplet" Nothing $
     do addRoutes
            [ ("/login/uidpwd", usernamePasswordLoginHandler)
+           , ("/reset/uidpwd", usernamePasswordResetHandler)
+           , ("/reset/uidpwd/complete", usernamePasswordResetCompletionHandler)
            , ("/login/github", githubLoginHandler)
            , ("/callback/github", githubCallbackHandler redirectTarget)
            , ("/logout", logoutHandler)
