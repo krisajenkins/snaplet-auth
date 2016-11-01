@@ -141,7 +141,7 @@ makePasswordResetJSON now currentHostname theSecret key =
         (JWT.def
          { iss = stringOrURI currentHostname
          , sub = stringOrURI (toText key)
-         , JWT.exp = numericDate $ utcTimeToPOSIXSeconds $ addUTCTime twoHours now
+         , JWT.exp = numericDate . utcTimeToPOSIXSeconds $ addUTCTime twoHours now
          , unregisteredClaims =
              Map.fromList [(resetPasswordJWTKey, Aeson.Bool True)]
          })
@@ -298,7 +298,7 @@ emailPasswordResetHandler =
        currentHostname <- view (authConfig . hostname)
        maybeAccount <- handleSql . lookupByEmail $ view email passwordResetRequest
        config <- view authConfig
-       now <- liftIO $ getCurrentTime
+       now <- liftIO getCurrentTime
        case maybeAccount of
            Nothing -> notfound
            Just (account, accountUidpwd) ->
@@ -334,7 +334,7 @@ makeResetEmail config toAddress resetHost resetToken =
     mailTo = [toAddress]
     mailCc = []
     mailBcc = []
-    mailHeaders = [("Subject", (view resetEmailSubject config))]
+    mailHeaders = [("Subject", view resetEmailSubject config)]
     mailParts = [[htmlPart . renderText $ resetEmailBody resetHost resetToken]]
 
 resetEmailBody :: Text -> Text -> Html ()
