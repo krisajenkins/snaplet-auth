@@ -6,7 +6,9 @@ resolver: lts-6.22
 # Local packages, usually specified by relative directory name
 packages:
 - '.'
-- /Users/Kris/Work/OpenSource/Kashmir
+- location:
+    git: https://www.github.com/krisajenkins/kashmir
+    commit: a37ccff19cceab76716ee8e1d3a4995f7d4b4a36
 
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps: 
