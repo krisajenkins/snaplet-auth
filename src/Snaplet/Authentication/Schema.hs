@@ -32,8 +32,9 @@ import           Kashmir.Github              as Github
 import           Kashmir.UUID
 import           Prelude                     hiding (id)
 
-share [mkPersist sqlSettings,mkMigrate "migrateAccounts"]
-      [persistLowerCase|
+share
+    [mkPersist sqlSettings, mkMigrate "migrateAccounts"]
+    [persistLowerCase|
   Account
     accountId UUID sqltype=uuid
     created UTCTime
@@ -56,51 +57,63 @@ share [mkPersist sqlSettings,mkMigrate "migrateAccounts"]
     deriving Read Show Eq Generic
   |]
 
-$(deriveJSON (dropPrefixJSONOptions "account")
-             ''Account)
+$(deriveJSON (dropPrefixJSONOptions "account") ''Account)
 
 -- TODO Update more details.
-createOrUpdateGithubUser :: UUID -> UTCTime -> AccessToken -> GithubUser -> SqlPersistM (Key Account)
+createOrUpdateGithubUser :: UUID
+                         -> UTCTime
+                         -> AccessToken
+                         -> GithubUser
+                         -> SqlPersistM (Key Account)
 createOrUpdateGithubUser uuid created theToken githubUser =
-  let savepointName = "upsert_github"
-  in do void $ createSavepoint savepointName
-        accountKey <- insert $ Account uuid created
-        maybeGithubKey <-
-          insertUnlessDuplicate
-            AccountGithub {accountGithubAccountId = accountKey
-                          ,accountGithubGithubUserLogin =
-                             view githubUserLogin githubUser
-                          ,accountGithubAccessToken = theToken}
-        case maybeGithubKey of
-          Just _ -> releaseSavepoint savepointName >> return accountKey
-          Nothing ->
-            do let match g =
-                     where_ (g ^. AccountGithubGithubUserLogin ==.
-                             val (view githubUserLogin githubUser))
-               void $ rollbackToSavepoint savepointName
-               update $
-                 \g ->
-                   do set g
-                          [AccountGithubAccessToken =. val theToken
-                          ,AccountGithubGithubUserLogin =.
-                           val (view githubUserLogin githubUser)]
-                      match g
-               accountIds <-
-                 select . from $
-                 \g ->
-                   do match g
-                      return (g ^. AccountGithubAccountId)
-               return . unValue . head $ accountIds
+    let savepointName = "upsert_github"
+    in do void $ createSavepoint savepointName
+          accountKey <- insert $ Account uuid created
+          maybeGithubKey <-
+              insertUnlessDuplicate
+                  AccountGithub
+                  { accountGithubAccountId = accountKey
+                  , accountGithubGithubUserLogin = view githubUserLogin githubUser
+                  , accountGithubAccessToken = theToken
+                  }
+          case maybeGithubKey of
+              Just _ -> releaseSavepoint savepointName >> return accountKey
+              Nothing -> do
+                  let match g =
+                          where_
+                              (g ^. AccountGithubGithubUserLogin ==.
+                               val (view githubUserLogin githubUser))
+                  void $ rollbackToSavepoint savepointName
+                  update $
+                      \g -> do
+                          set
+                              g
+                              [ AccountGithubAccessToken =. val theToken
+                              , AccountGithubGithubUserLogin =.
+                                val (view githubUserLogin githubUser)]
+                          match g
+                  accountIds <-
+                      select . from $
+                      \g -> do
+                          match g
+                          return (g ^. AccountGithubAccountId)
+                  return . unValue . head $ accountIds
 
-createPasswordUser :: UUID -> UTCTime -> Text -> Text -> SqlPersistM (Key Account)
-createPasswordUser uuid created username password =
-  do Just hashedPassword <-
-       liftIO $
-       hashPasswordUsingPolicy fastBcryptHashingPolicy
-                               (encodeUtf8 password)
-     accountKey <- insert $ Account uuid created
-     _ <-
-       insert AccountUidpwd {accountUidpwdAccountId = unAccountKey accountKey
-                            ,accountUidpwdUsername = username
-                            ,accountUidpwdPassword = decodeUtf8 hashedPassword}
-     return accountKey
+createPasswordUser :: UUID
+                   -> UTCTime
+                   -> Text
+                   -> Text
+                   -> SqlPersistM (Key Account)
+createPasswordUser uuid created username password = do
+    Just hashedPassword <-
+        liftIO $
+        hashPasswordUsingPolicy fastBcryptHashingPolicy (encodeUtf8 password)
+    accountKey <- insert $ Account uuid created
+    _ <-
+        insert
+            AccountUidpwd
+            { accountUidpwdAccountId = unAccountKey accountKey
+            , accountUidpwdUsername = username
+            , accountUidpwdPassword = decodeUtf8 hashedPassword
+            }
+    return accountKey
