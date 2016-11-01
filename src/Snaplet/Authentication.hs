@@ -94,6 +94,14 @@ twoWeeks :: NominalDiffTime
 twoWeeks = 60 * 60 * 24 * 7 * 2
 
 ------------------------------------------------------------
+
+handleSql :: SqlPersistM a -> Handler b (Authentication b) a
+handleSql sql = do
+    connection <- getConnection
+    liftIO $ runSqlPersistMPool sql connection
+
+------------------------------------------------------------
+
 baseSessionCookie :: Cookie
 baseSessionCookie =
     Cookie
@@ -238,9 +246,7 @@ processUsernamePassword :: ByteString
                         -> ByteString
                         -> Handler b (Authentication b) ()
 processUsernamePassword username password = do
-    connection <- getConnection
-    matchingAccount <-
-        liftIO $ runSqlPersistMPool (lookupByUsername (decodeUtf8 username)) connection
+    matchingAccount <- handleSql . lookupByUsername $ decodeUtf8 username
     case matchingAccount of
         Nothing -> unauthorized
         -- Validate password.
@@ -277,13 +283,8 @@ usernamePasswordResetHandler =
     method POST $
     do secretKey <- getSecretKey
        passwordResetRequest <- requireBoundedJSON 1024
-       connection <- getConnection
        currentHostname <- view (authConfig . hostname)
-       maybeAccount <-
-           liftIO $
-           runSqlPersistMPool
-               (lookupByUsername (view username passwordResetRequest))
-               connection
+       maybeAccount <- handleSql . lookupByUsername $ view username passwordResetRequest
        case maybeAccount of
            Nothing -> notfound
            Just (account, _) ->
@@ -323,7 +324,6 @@ usernamePasswordResetCompletionHandler =
     method POST $
     do secretKey <- getSecretKey
        passwordResetCompletion <- requireBoundedJSON 1024
-       connection <- getConnection
        case (do theClaims <-
                     extractClaims secretKey (view token passwordResetCompletion)
                 subject <- stringOrURIToText <$> JWT.sub theClaims
@@ -344,10 +344,7 @@ usernamePasswordResetCompletionHandler =
                    Nothing -> unauthorized
                    Just hashedPassword -> do
                        maybeAccount <-
-                           liftIO $
-                           runSqlPersistMPool
-                               (resetUidpwdUserPassword uuid hashedPassword)
-                               connection
+                           handleSql $ resetUidpwdUserPassword uuid hashedPassword
                        case maybeAccount of
                            Just account -> authorizedAccountResponse account
                            Nothing -> unauthorized
@@ -388,17 +385,13 @@ userDetailsHandler :: Handler b (Authentication b) ()
 userDetailsHandler =
     method GET $
     do logError "Looking up user details."
-       connection <- getConnection
        authToken <- readAuthToken
        logError $ "Got auth token: " <> maybe "<none>" toStrictByteString authToken
        case authToken of
            Nothing -> removeAuthToken >> pass
            Just accountId -> do
                account <-
-                   liftIO $
-                   runSqlPersistMPool
-                       (Database.Persist.get $ AccountKey accountId)
-                       connection
+                   handleSql (Database.Persist.get $ AccountKey accountId)
                case account of
                    Nothing -> throw AccountNotFound
                    Just a -> writeJSON a
