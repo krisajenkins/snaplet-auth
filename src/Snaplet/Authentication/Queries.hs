@@ -1,9 +1,10 @@
 module Snaplet.Authentication.Queries
-  ( lookupByUsername
+  ( lookupByEmail
   , hashFor
   , resetUidpwdUserPassword
   , createUidpwdUser
   , getGithubAccessToken
+  , HashedPassword
   ) where
 
 import           Control.Exception
@@ -12,18 +13,19 @@ import           Data.Text                        (Text)
 import           Data.Text.Encoding
 import           Data.Time
 import           Database.Esqueleto
+import           Kashmir.Email
 import           Kashmir.Github.Types
 import           Kashmir.UUID
 import           Snaplet.Authentication.Exception
 import           Snaplet.Authentication.Schema
 
-lookupByUsername :: Text -> SqlPersistM (Maybe (Account, AccountUidpwd))
-lookupByUsername username =
+lookupByEmail :: Email -> SqlPersistM (Maybe (Account, AccountUidpwd))
+lookupByEmail email =
     onlyOne . fmap unwrap <$>
     (select . from $
      \(account `InnerJoin` accountUidpwd) -> do
          on $ account ^. AccountAccountId ==. accountUidpwd ^. AccountUidpwdAccountId
-         where_ (accountUidpwd ^. AccountUidpwdUsername ==. val username)
+         where_ (accountUidpwd ^. AccountUidpwdEmail ==. val email)
          return (account, accountUidpwd))
 
 unwrap :: (Entity a, Entity b) -> (a, b)
@@ -47,16 +49,16 @@ hashFor password = do
 
 createUidpwdUser :: UUID
                  -> UTCTime
-                 -> Text
+                 -> Email
                  -> HashedPassword
                  -> SqlPersistM (Key Account)
-createUidpwdUser uuid created username hashedPassword = do
+createUidpwdUser uuid created email hashedPassword = do
     accountKey <- insert $ Account uuid created
     _ <-
         insert
             AccountUidpwd
             { accountUidpwdAccountId = unAccountKey accountKey
-            , accountUidpwdUsername = username
+            , accountUidpwdEmail = email
             , accountUidpwdPassword = hash hashedPassword
             }
     return accountKey

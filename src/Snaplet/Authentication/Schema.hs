@@ -28,6 +28,7 @@ import           Database.Persist.TH
 import           GHC.Generics                (Generic)
 import           Kashmir.Aeson
 import           Kashmir.Database.Postgresql
+import           Kashmir.Email
 import           Kashmir.Github              as Github
 import           Kashmir.UUID
 import           Prelude                     hiding (id)
@@ -43,9 +44,9 @@ share
 
   AccountUidpwd
     accountId UUID sqltype=uuid
-    username Text sqltype=text
+    email Email sqltype=text
     password Text sqltype=text
-    Primary username
+    Primary email
     deriving Read Show Eq Generic
 
   AccountGithub
@@ -101,10 +102,10 @@ createOrUpdateGithubUser uuid created theToken githubUser =
 
 createPasswordUser :: UUID
                    -> UTCTime
-                   -> Text
+                   -> Email
                    -> Text
                    -> SqlPersistM (Key Account)
-createPasswordUser uuid created username password = do
+createPasswordUser uuid created email password = do
     Just hashedPassword <-
         liftIO $
         hashPasswordUsingPolicy fastBcryptHashingPolicy (encodeUtf8 password)
@@ -113,7 +114,7 @@ createPasswordUser uuid created username password = do
         insert
             AccountUidpwd
             { accountUidpwdAccountId = unAccountKey accountKey
-            , accountUidpwdUsername = username
+            , accountUidpwdEmail = email
             , accountUidpwdPassword = decodeUtf8 hashedPassword
             }
     return accountKey

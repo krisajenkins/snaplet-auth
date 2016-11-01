@@ -98,14 +98,12 @@ twoWeeks :: NominalDiffTime
 twoWeeks = 60 * 60 * 24 * 7 * 2
 
 ------------------------------------------------------------
-
 handleSql :: SqlPersistM a -> Handler b (Authentication b) a
 handleSql sql = do
     connection <- getConnection
     liftIO $ runSqlPersistMPool sql connection
 
 ------------------------------------------------------------
-
 baseSessionCookie :: Cookie
 baseSessionCookie =
     Cookie
@@ -152,13 +150,11 @@ makeSessionCookie currentHostname theSecret expires key =
     }
 
 ------------------------------------------------------------
-
 extractClaims :: Secret -> Text -> Maybe JWTClaimsSet
 extractClaims secretKey rawText =
     claims <$> decodeAndVerifySignature secretKey rawText
 
 ------------------------------------------------------------
-
 getSecretKey :: Handler b (Authentication b) Secret
 getSecretKey = secret <$> view (authConfig . jwtSecretKey)
 
@@ -249,11 +245,9 @@ githubCallbackHandler redirectTarget =
     method GET $ requireParam "code" >>= processGithubAccessToken redirectTarget
 
 ------------------------------------------------------------
-processUsernamePassword :: ByteString
-                        -> ByteString
-                        -> Handler b (Authentication b) ()
-processUsernamePassword username password = do
-    matchingAccount <- handleSql . lookupByUsername $ decodeUtf8 username
+processEmailPassword :: Email -> ByteString -> Handler b (Authentication b) ()
+processEmailPassword email password = do
+    matchingAccount <- handleSql (lookupByEmail email)
     case matchingAccount of
         Nothing -> unauthorized
         -- Validate password.
@@ -270,43 +264,48 @@ authorizedAccountResponse account = do
     writeAuthToken (addUTCTime twoWeeks now) (accountAccountId account)
     writeJSON account
 
-usernamePasswordLoginHandler :: Handler b (Authentication b) ()
-usernamePasswordLoginHandler =
+emailPasswordLoginHandler :: Handler b (Authentication b) ()
+emailPasswordLoginHandler =
     method POST $
-    do username <- requirePostParam "username"
-       password <- requirePostParam "password"
-       processUsernamePassword username password
+    do emailParam <- decodeUtf8 <$> requirePostParam "email"
+       passwordParam <- requirePostParam "password"
+       case parseEmail emailParam of
+           Left err -> malformedRequest (encodeUtf8 err)
+           Right email -> processEmailPassword email passwordParam
 
 ------------------------------------------------------------
 -- TODO We must gather email addresses. We should probably just make the username an email addresses.
 -- TODO Tidy
 -- TODO Extract the email creation.
 data PasswordResetRequest = PasswordResetRequest
-    { _username   :: Text
+    { _email      :: Email
     , _redirectTo :: Text
     } deriving (Show, Eq)
 
 makeLenses ''PasswordResetRequest
+
 $(deriveJSON (dropPrefixJSONOptions "_") ''PasswordResetRequest)
 
-usernamePasswordResetHandler :: Handler b (Authentication b) ()
-usernamePasswordResetHandler =
+emailPasswordResetHandler :: Handler b (Authentication b) ()
+emailPasswordResetHandler =
     method POST $
     do secretKey <- getSecretKey
        passwordResetRequest <- requireBoundedJSON 1024
        currentHostname <- view (authConfig . hostname)
-       maybeAccount <- handleSql . lookupByUsername $ view username passwordResetRequest
+       maybeAccount <- handleSql . lookupByEmail $ view email passwordResetRequest
        config <- view authConfig
        case maybeAccount of
            Nothing -> notfound
-           Just (account, _) ->
+           Just (account, accountUidpwd) ->
                let resetToken =
                        makePasswordResetJSON
                            currentHostname
                            secretKey
                            (accountAccountId account)
                    toAddress =
-                       Address (Just "Kris Jenkins") "krisajenkins@gmail.com"
+                       Address
+                           Nothing
+                           (unEmail (accountUidpwdEmail accountUidpwd))
                    mail =
                        makeResetEmail
                            config
@@ -344,48 +343,57 @@ resetEmailBody resetHost resetToken =
                     " to complete the process.")
             p_ "Thank you.")
 
-
 data PasswordResetCompletion = PasswordResetCompletion
     { _token       :: Text
     , _newPassword :: Text
     } deriving (Show, Eq)
 
 makeLenses ''PasswordResetCompletion
+
 $(deriveJSON (dropPrefixJSONOptions "_") ''PasswordResetCompletion)
 
-usernamePasswordResetCompletionHandler :: Handler b (Authentication b) ()
-usernamePasswordResetCompletionHandler =
+extractVerifiedResetUUID :: Secret -> PasswordResetCompletion -> Maybe UUID
+extractVerifiedResetUUID secretKey passwordResetCompletion =
+    do theClaims <- extractClaims secretKey (view token passwordResetCompletion)
+       subject <- stringOrURIToText <$> JWT.sub theClaims
+       uuid <- fromText subject
+       isResetCompletion <-
+           Map.lookup resetPasswordJWTKey (unregisteredClaims theClaims)
+       case isResetCompletion of
+           (Aeson.Bool True) -> Just uuid
+           _ -> Nothing
+
+hashRequestedPassword
+    :: MonadIO m
+    => PasswordResetCompletion -> m (Maybe HashedPassword)
+hashRequestedPassword = liftIO . hashFor . view newPassword
+
+runResetPassword :: UUID
+                 -> HashedPassword
+                 -> Handler b (Authentication b) (Maybe Account)
+runResetPassword uuid = handleSql . resetUidpwdUserPassword uuid
+
+-- TODO This trio of MaybeT calls is suspicious.
+processPasswordResetCompletion :: Handler b (Authentication b) (Maybe Account)
+processPasswordResetCompletion = do
+    secretKey <- getSecretKey
+    passwordResetCompletion <- requireBoundedJSON 1024
+    runMaybeT $
+        do uuid <- MaybeT . pure $ extractVerifiedResetUUID secretKey passwordResetCompletion
+           hashedPassword <-
+               MaybeT (hashRequestedPassword passwordResetCompletion)
+           MaybeT (runResetPassword uuid hashedPassword)
+
+emailPasswordResetCompletionHandler :: Handler b (Authentication b) ()
+emailPasswordResetCompletionHandler =
     method POST $
-    do secretKey <- getSecretKey
-       passwordResetCompletion <- requireBoundedJSON 1024
-       case (do theClaims <-
-                    extractClaims secretKey (view token passwordResetCompletion)
-                subject <- stringOrURIToText <$> JWT.sub theClaims
-                uuid <- fromText subject
-                isResetCompletion <-
-                    Map.lookup
-                        resetPasswordJWTKey
-                        (unregisteredClaims theClaims)
-                case isResetCompletion of
-                    (Aeson.Bool True) -> Just uuid
-                    _ -> Nothing) of
-           Just uuid
-           -- Verified!
-            -> do
-               maybeHashedPassword <-
-                   liftIO $ hashFor (view newPassword passwordResetCompletion)
-               case maybeHashedPassword of
-                   Nothing -> unauthorized
-                   Just hashedPassword -> do
-                       maybeAccount <-
-                           handleSql $ resetUidpwdUserPassword uuid hashedPassword
-                       case maybeAccount of
-                           Just account -> authorizedAccountResponse account
-                           Nothing -> unauthorized
+    do maybeAccount <- processPasswordResetCompletion
+       case maybeAccount of
+           Just account -> authorizedAccountResponse account
            Nothing -> unauthorized
 
-
 ------------------------------------------------------------
+
 -- | Require that an authenticated AuthUser is present in the current session.
 -- This function has no DB cost - only checks to see if the client has passed a valid auth token.
 requireUser
@@ -444,9 +452,9 @@ initAuthentication
 initAuthentication redirectTarget _authConfig _poolLens _randomNumberGeneratorLens =
     makeSnaplet "authentication" "Authentication Snaplet" Nothing $
     do addRoutes
-           [ ("/login/uidpwd", usernamePasswordLoginHandler)
-           , ("/reset/uidpwd", usernamePasswordResetHandler)
-           , ("/reset/uidpwd/complete", usernamePasswordResetCompletionHandler)
+           [ ("/login/uidpwd", emailPasswordLoginHandler)
+           , ("/reset/uidpwd", emailPasswordResetHandler)
+           , ("/reset/uidpwd/complete", emailPasswordResetCompletionHandler)
            , ("/login/github", githubLoginHandler)
            , ("/callback/github", githubCallbackHandler redirectTarget)
            , ("/logout", logoutHandler)
