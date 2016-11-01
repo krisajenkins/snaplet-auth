@@ -80,7 +80,7 @@ data AuthenticationOptions = AuthenticationOptions
 $(deriveJSON (dropPrefixJSONOptions "_") ''AuthenticationOptions)
 
 ------------------------------------------------------------
--- TODO Move to config
+-- TODO Move this cookie name to Config.
 sessionCookieName :: ByteString
 sessionCookieName = "sessionId"
 
@@ -114,6 +114,8 @@ baseSessionCookie =
     , cookieHttpOnly = False
     }
 
+-- TODO This should use `sub` instead of a custom unregistered claim.
+-- TODO Add an expiry time.
 makeSessionJSON :: Text -> Secret -> UUID -> JSON
 makeSessionJSON currentHostname theSecret key =
     encodeSigned
@@ -125,6 +127,7 @@ makeSessionJSON currentHostname theSecret key =
              Map.fromList [(sessionIdName, Aeson.String (toText key))]
          })
 
+-- TODO Add a short expiry time.
 makePasswordResetJSON :: Text -> Secret -> UUID -> JSON
 makePasswordResetJSON currentHostname theSecret key =
     encodeSigned
