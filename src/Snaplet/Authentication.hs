@@ -10,6 +10,8 @@ module Snaplet.Authentication
   , Authentication
   , requireUser
   , withUser
+  , makeSessionJSON
+  , sessionIdName
   , module Q
   , module X
   , AuthConfig(..)
