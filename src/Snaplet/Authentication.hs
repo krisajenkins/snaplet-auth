@@ -117,6 +117,14 @@ makeSessionCookie currentHostname theSecret expires key =
     }
 
 ------------------------------------------------------------
+
+extractClaims :: Secret -> Text -> Maybe ClaimsMap
+extractClaims secretKey rawText = do
+    verifiedToken <- decodeAndVerifySignature secretKey rawText
+    return . unregisteredClaims . claims $ verifiedToken
+
+------------------------------------------------------------
+
 getSecretKey :: Handler b (Authentication b) Secret
 getSecretKey = secret <$> view (authConfig . jwtSecretKey)
 
@@ -126,11 +134,10 @@ readAuthToken = do
     maybeCookie <- getCookie sessionCookieName
     return $
         do authenticationCookie <- maybeCookie
-           verifiedToken <-
-               decodeAndVerifySignature
+           theClaims <-
+               extractClaims
                    secretKey
                    (decodeUtf8 $ cookieValue authenticationCookie)
-           let theClaims = unregisteredClaims $ claims verifiedToken
            sessionId <- Map.lookup sessionIdName theClaims
            case sessionId of
                (String s) -> fromText s
