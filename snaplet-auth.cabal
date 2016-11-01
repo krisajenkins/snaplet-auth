@@ -25,6 +25,7 @@ library
                      , bcrypt
                      , bytestring
                      , containers
+                     , lucid
                      , either
                      , esqueleto
                      , jwt

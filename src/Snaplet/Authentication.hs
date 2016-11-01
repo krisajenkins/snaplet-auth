@@ -33,7 +33,6 @@ import qualified Data.Map                         as Map
 import           Data.Monoid
 import           Data.Text                        as T
 import           Data.Text.Encoding
-import qualified Data.Text.Lazy                   as LT
 import           Data.Time
 import           Data.UUID
 import           Data.Yaml
@@ -41,11 +40,13 @@ import           Database.Esqueleto               hiding (migrate)
 import qualified Database.Persist
 import           GHC.Generics
 import           Kashmir.Aeson
+import           Kashmir.Email
 import qualified Kashmir.Github                   as Github
 import           Kashmir.Snap.Snaplet.Random
 import           Kashmir.Snap.Utils
 import           Kashmir.UUID
 import           Kashmir.Web
+import           Lucid
 import           Network.Mail.Mime
 import           Snap                             hiding (with)
 import           Snap.CORS
@@ -56,9 +57,12 @@ import           Snaplet.Authentication.Schema    as X
 import           Web.JWT                          as JWT hiding (header)
 
 data AuthConfig = AuthConfig
-    { _jwtSecretKey :: Text
-    , _hostname     :: Text
-    , _github       :: Github.Config
+    { _jwtSecretKey      :: Text
+    , _hostname          :: Text
+    , _github            :: Github.Config
+    , _resetEmailName    :: Text
+    , _resetEmail        :: Email
+    , _resetEmailSubject :: Text
     }
 
 makeLenses ''AuthConfig
@@ -274,8 +278,12 @@ usernamePasswordLoginHandler =
        processUsernamePassword username password
 
 ------------------------------------------------------------
+-- TODO We must gather email addresses. We should probably just make the username an email addresses.
+-- TODO Tidy
+-- TODO Extract the email creation.
 data PasswordResetRequest = PasswordResetRequest
-    { _username :: Text
+    { _username   :: Text
+    , _redirectTo :: Text
     } deriving (Show, Eq)
 
 makeLenses ''PasswordResetRequest
@@ -288,6 +296,7 @@ usernamePasswordResetHandler =
        passwordResetRequest <- requireBoundedJSON 1024
        currentHostname <- view (authConfig . hostname)
        maybeAccount <- handleSql . lookupByUsername $ view username passwordResetRequest
+       config <- view authConfig
        case maybeAccount of
            Nothing -> notfound
            Just (account, _) ->
@@ -296,23 +305,45 @@ usernamePasswordResetHandler =
                            currentHostname
                            secretKey
                            (accountAccountId account)
-                   mailFrom =
-                       Address
-                           (Just "CommercialStreet")
-                           "noreply@commercialstreet.co.uk"
-                   mailTo =
-                       [Address (Just "Kris Jenkins") "krisajenkins@gmail.com"]
-                   mailCc = []
-                   mailBcc = []
-                   mailHeaders = [("Subject", "Password Reset Requested")]
-                   mailParts =
-                       [[plainPart ("Hello\n" <> LT.fromStrict resetToken)]]
+                   toAddress =
+                       Address (Just "Kris Jenkins") "krisajenkins@gmail.com"
                    mail =
-                       Mail
-                       { ..
-                       }
+                       makeResetEmail
+                           config
+                           toAddress
+                           (view redirectTo passwordResetRequest)
+                           resetToken
                in do liftIO $ sendmail =<< renderMail' mail
                      writeJSON (Map.fromList [("email_sent" :: Text, True)])
+
+makeResetEmail :: AuthConfig -> Address -> Text -> Text -> Mail
+makeResetEmail config toAddress resetHost resetToken =
+    Mail
+    { ..
+    }
+  where
+    mailFrom =
+        Address
+            (Just (view resetEmailName config))
+            (unEmail (view resetEmail config))
+    mailTo = [toAddress]
+    mailCc = []
+    mailBcc = []
+    mailHeaders = [("Subject", (view resetEmailSubject config))]
+    mailParts = [[htmlPart . renderText $ resetEmailBody resetHost resetToken]]
+
+resetEmailBody :: Text -> Text -> Html ()
+resetEmailBody resetHost resetToken =
+    div_
+        (do p_ "Hello,"
+            p_
+                (do "We have received a request to reset your password. Please "
+                    a_
+                        [href_ (resetHost <> "?token=" <> resetToken)]
+                        "visit this link"
+                    " to complete the process.")
+            p_ "Thank you.")
+
 
 data PasswordResetCompletion = PasswordResetCompletion
     { _token       :: Text
