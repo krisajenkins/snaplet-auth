@@ -34,6 +34,7 @@ import           Data.Monoid
 import           Data.Text                        as T
 import           Data.Text.Encoding
 import           Data.Time
+import           Data.Time.Clock.POSIX
 import           Data.UUID
 import           Data.Yaml
 import           Database.Esqueleto               hiding (migrate)
@@ -94,6 +95,9 @@ sessionIdName = "accountId"
 resetPasswordJWTKey :: Text
 resetPasswordJWTKey = "ResetPassword"
 
+twoHours :: NominalDiffTime
+twoHours = 60 * 60 * 2
+
 twoWeeks :: NominalDiffTime
 twoWeeks = 60 * 60 * 24 * 7 * 2
 
@@ -129,15 +133,15 @@ makeSessionJSON currentHostname theSecret key =
              Map.fromList [(sessionIdName, Aeson.String (toText key))]
          })
 
--- TODO Add a short expiry time.
-makePasswordResetJSON :: Text -> Secret -> UUID -> JSON
-makePasswordResetJSON currentHostname theSecret key =
+makePasswordResetJSON :: UTCTime -> Text -> Secret -> UUID -> JSON
+makePasswordResetJSON now currentHostname theSecret key =
     encodeSigned
         HS256
         theSecret
         (JWT.def
          { iss = stringOrURI currentHostname
          , sub = stringOrURI (toText key)
+         , JWT.exp = numericDate $ utcTimeToPOSIXSeconds $ addUTCTime twoHours now
          , unregisteredClaims =
              Map.fromList [(resetPasswordJWTKey, Aeson.Bool True)]
          })
@@ -294,11 +298,13 @@ emailPasswordResetHandler =
        currentHostname <- view (authConfig . hostname)
        maybeAccount <- handleSql . lookupByEmail $ view email passwordResetRequest
        config <- view authConfig
+       now <- liftIO $ getCurrentTime
        case maybeAccount of
            Nothing -> notfound
            Just (account, accountUidpwd) ->
                let resetToken =
                        makePasswordResetJSON
+                           now
                            currentHostname
                            secretKey
                            (accountAccountId account)
