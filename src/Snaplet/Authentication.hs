@@ -188,7 +188,7 @@ writeAuthToken expires accountId = do
             (makeSessionCookie currentHostname secretKey expires accountId)
 
 ------------------------------------------------------------
--- TODO Replace uses of this code with this call.
+
 getConnection :: Handler b (Authentication b) ConnectionPool
 getConnection = do
     pool <- view poolLens
