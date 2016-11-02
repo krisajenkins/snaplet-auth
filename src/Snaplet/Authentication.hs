@@ -11,7 +11,6 @@ module Snaplet.Authentication
   , requireUser
   , withUser
   , makeSessionJSON
-  , sessionIdName
   , extractClaims
   , module Q
   , module X
@@ -36,7 +35,6 @@ import           Data.Text.Encoding
 import           Data.Time
 import           Data.Time.Clock.POSIX
 import           Data.UUID
-import           Data.Yaml
 import           Database.Esqueleto               hiding (migrate)
 import qualified Database.Persist
 import           GHC.Generics
@@ -89,9 +87,6 @@ $(deriveJSON (dropPrefixJSONOptions "_") ''AuthenticationOptions)
 sessionCookieName :: ByteString
 sessionCookieName = "sessionId"
 
-sessionIdName :: Text
-sessionIdName = "accountId"
-
 resetPasswordJWTKey :: Text
 resetPasswordJWTKey = "ResetPassword"
 
@@ -120,36 +115,34 @@ baseSessionCookie =
     , cookieHttpOnly = False
     }
 
--- TODO This should use `sub` instead of a custom unregistered claim.
 -- TODO Add an expiry time.
 makeSessionJSON :: Text -> Secret -> UUID -> JSON
-makeSessionJSON currentHostname theSecret key =
+makeSessionJSON currentHostname theSecret uuid =
     encodeSigned
         HS256
         theSecret
         (JWT.def
          { iss = stringOrURI currentHostname
-         , unregisteredClaims =
-             Map.fromList [(sessionIdName, Aeson.String (toText key))]
+         , sub = stringOrURI $ toText uuid
          })
 
 makePasswordResetJSON :: UTCTime -> Text -> Secret -> UUID -> JSON
-makePasswordResetJSON now currentHostname theSecret key =
+makePasswordResetJSON now currentHostname theSecret uuid =
     encodeSigned
         HS256
         theSecret
         (JWT.def
          { iss = stringOrURI currentHostname
-         , sub = stringOrURI (toText key)
+         , sub = stringOrURI (toText uuid)
          , JWT.exp = numericDate . utcTimeToPOSIXSeconds $ addUTCTime twoHours now
          , unregisteredClaims =
              Map.fromList [(resetPasswordJWTKey, Aeson.Bool True)]
          })
 
 makeSessionCookie :: Text -> Secret -> UTCTime -> UUID -> Cookie
-makeSessionCookie currentHostname theSecret expires key =
+makeSessionCookie currentHostname theSecret expires uuid =
     baseSessionCookie
-    { cookieValue = encodeUtf8 $ makeSessionJSON currentHostname theSecret key
+    { cookieValue = encodeUtf8 $ makeSessionJSON currentHostname theSecret uuid
     , cookieExpires = Just expires
     }
 
@@ -172,10 +165,8 @@ readAuthToken = do
                extractClaims
                    secretKey
                    (decodeUtf8 $ cookieValue authenticationCookie)
-           sessionId <- Map.lookup sessionIdName (unregisteredClaims theClaims)
-           case sessionId of
-               (String s) -> fromText s
-               _ -> Nothing
+           sessionId <- stringOrURIToText <$> sub theClaims
+           fromText sessionId
 
 removeAuthToken
     :: MonadSnap m
