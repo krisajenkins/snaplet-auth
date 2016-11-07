@@ -273,8 +273,9 @@ emailPasswordLoginHandler =
 -- TODO Tidy
 -- TODO Extract the email creation.
 data PasswordResetRequest = PasswordResetRequest
-    { _email      :: Email
-    , _redirectTo :: Text
+    { _email        :: Email
+    , _redirectHost :: Text
+    , _redirectHash :: Text
     } deriving (Show, Eq)
 
 makeLenses ''PasswordResetRequest
@@ -307,13 +308,13 @@ emailPasswordResetHandler =
                        makeResetEmail
                            config
                            toAddress
-                           (view redirectTo passwordResetRequest)
+                           passwordResetRequest
                            resetToken
                in do liftIO $ sendmail =<< renderMail' mail
                      writeJSON (Map.fromList [("email_sent" :: Text, True)])
 
-makeResetEmail :: AuthConfig -> Address -> Text -> Text -> Mail
-makeResetEmail config toAddress resetHost resetToken =
+makeResetEmail :: AuthConfig -> Address -> PasswordResetRequest -> Text -> Mail
+makeResetEmail config toAddress passwordResetRequest resetToken =
     Mail
     { ..
     }
@@ -326,16 +327,18 @@ makeResetEmail config toAddress resetHost resetToken =
     mailCc = []
     mailBcc = []
     mailHeaders = [("Subject", view resetEmailSubject config)]
-    mailParts = [[htmlPart . renderText $ resetEmailBody resetHost resetToken]]
+    mailParts = [[htmlPart . renderText $ resetEmailBody passwordResetRequest resetToken]]
 
-resetEmailBody :: Text -> Text -> Html ()
-resetEmailBody resetHost resetToken =
+resetEmailBody :: PasswordResetRequest -> Text -> Html ()
+resetEmailBody request resetToken =
     div_
         (do p_ "Hello,"
             p_
                 (do "We have received a request to reset your password. Please "
                     a_
-                        [href_ (resetHost <> "?token=" <> resetToken)]
+                        [ href_
+                              (view redirectHost request <> "/?token=" <> resetToken <>
+                               view redirectHash request)]
                         "visit this link"
                     " to complete the process.")
             p_ "Thank you.")
