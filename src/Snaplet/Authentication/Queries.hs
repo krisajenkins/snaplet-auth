@@ -4,10 +4,12 @@ module Snaplet.Authentication.Queries
   , resetUidpwdUserPassword
   , createUidpwdUser
   , getGithubAccessToken
+  , handleSql
   , HashedPassword
   ) where
 
-import           Control.Exception
+import           Control.Exception                (throw)
+import           Control.Monad.IO.Class
 import           Crypto.BCrypt
 import           Data.Text                        (Text)
 import           Data.Text.Encoding
@@ -16,6 +18,8 @@ import           Database.Esqueleto
 import           Kashmir.Email
 import           Kashmir.Github.Types
 import           Kashmir.UUID
+import           Snap
+import           Snaplet.Authentication.Common
 import           Snaplet.Authentication.Exception
 import           Snaplet.Authentication.Schema
 
@@ -83,3 +87,10 @@ getGithubAccessToken key =
      \accountGithub -> do
          where_ (accountGithub ^. AccountGithubAccountId ==. val key)
          return (accountGithub ^. AccountGithubAccessToken))
+
+------------------------------------------------------------
+
+handleSql :: SqlPersistM a -> Handler b (Authentication b) a
+handleSql sql = do
+    connection <- getConnection
+    liftIO $ runSqlPersistMPool sql connection

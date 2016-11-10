@@ -16,9 +16,12 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Snaplet.Authentication
+                     , Snaplet.Authentication.Session
   other-modules:       Snaplet.Authentication.Queries
-                     , Snaplet.Authentication.Schema
+                     , Snaplet.Authentication.Common
                      , Snaplet.Authentication.Exception
+                     , Snaplet.Authentication.PasswordReset
+                     , Snaplet.Authentication.Schema
   build-depends:       base >= 4.7 && < 5
                      , MonadCatchIO-transformers
                      , aeson
@@ -49,7 +52,7 @@ test-suite snaplet-auth-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
-  other-modules:       Snaplet.AuthenticationSpec
+  other-modules:       Snaplet.Authentication.SessionSpec
   build-depends:       base
                      , snaplet-auth
                      , hspec

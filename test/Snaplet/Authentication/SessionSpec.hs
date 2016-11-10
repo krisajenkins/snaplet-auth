@@ -2,12 +2,12 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Snaplet.AuthenticationSpec where
+module Snaplet.Authentication.SessionSpec where
 
 import qualified Data.Aeson             as Aeson
 import qualified Data.Map               as Map
 import qualified Data.UUID              as UUID
-import           Snaplet.Authentication
+import           Snaplet.Authentication.Session
 import           Test.Hspec
 import qualified Web.JWT                as JWT
 
