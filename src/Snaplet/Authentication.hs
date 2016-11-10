@@ -37,7 +37,6 @@ import           Kashmir.Snap.Utils
 import           Kashmir.UUID
 import           Kashmir.Web
 import           Snap                                 hiding (with)
-import           Snap.CORS
 import           Snaplet.Authentication.Common
 import           Snaplet.Authentication.Exception
 import           Snaplet.Authentication.PasswordReset
@@ -188,7 +187,6 @@ initAuthentication redirectTarget _authConfig _poolLens _randomNumberGeneratorLe
            , ("/logout", logoutHandler)
            , ("/status", authStatusHandler)]
        _ <- Snap.withTop _poolLens $ addPostInitHook migrate
-       wrapSite $ applyCORS defaultOptions
        return
            Authentication
            { ..
