@@ -147,6 +147,7 @@ makeSessionCookie currentHostname theSecret expires uuid =
     }
 
 ------------------------------------------------------------
+
 extractClaims :: Secret -> Text -> Maybe JWTClaimsSet
 extractClaims secretKey rawText =
     claims <$> decodeAndVerifySignature secretKey rawText
