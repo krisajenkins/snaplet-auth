@@ -40,11 +40,11 @@ import           Snap                                 hiding (with)
 import           Snap.CORS
 import           Snaplet.Authentication.Common
 import           Snaplet.Authentication.Exception
-import           Snaplet.Authentication.Session
 import           Snaplet.Authentication.PasswordReset
 import           Snaplet.Authentication.Queries
 import qualified Snaplet.Authentication.Queries       as Q (getGithubAccessToken)
 import           Snaplet.Authentication.Schema        as X
+import           Snaplet.Authentication.Session
 
 
 ------------------------------------------------------------
@@ -151,8 +151,8 @@ logoutHandler = do
     removeAuthToken
     redirect "/"
 
-userDetailsHandler :: Handler b (Authentication b) ()
-userDetailsHandler =
+authStatusHandler :: Handler b (Authentication b) ()
+authStatusHandler =
     method GET $
     do logError "Looking up user details."
        authToken <- readAuthToken
@@ -186,7 +186,7 @@ initAuthentication redirectTarget _authConfig _poolLens _randomNumberGeneratorLe
            , ("/login/github", githubLoginHandler)
            , ("/callback/github", githubCallbackHandler redirectTarget)
            , ("/logout", logoutHandler)
-           , ("/status", userDetailsHandler)]
+           , ("/status", authStatusHandler)]
        _ <- Snap.withTop _poolLens $ addPostInitHook migrate
        wrapSite $ applyCORS defaultOptions
        return
