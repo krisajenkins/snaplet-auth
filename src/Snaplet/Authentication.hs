@@ -45,11 +45,6 @@ import qualified Snaplet.Authentication.Queries       as Q (getGithubAccessToken
 import           Snaplet.Authentication.Schema        as X
 import           Snaplet.Authentication.Session
 
-
-------------------------------------------------------------
-
-------------------------------------------------------------
-
 ------------------------------------------------------------
 
 githubLoginUrl :: Github.Config -> Text
