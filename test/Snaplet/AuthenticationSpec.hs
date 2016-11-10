@@ -4,13 +4,8 @@
 
 module Snaplet.AuthenticationSpec where
 
--- import           Data.Char
-import qualified Data.Map               as Map
--- import           Data.Monoid
--- import           Data.Proxy
--- import           Data.Text              hiding (unlines)
--- import           Data.Time
 import qualified Data.Aeson             as Aeson
+import qualified Data.Map               as Map
 import qualified Data.UUID              as UUID
 import           Snaplet.Authentication
 import           Test.Hspec
