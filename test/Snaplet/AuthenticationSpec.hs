@@ -24,9 +24,7 @@ makeSessionJSONSpec :: Spec
 makeSessionJSONSpec =
     describe "makeSessionJSON" $
     do it "should complete a two-way session encode" $
-           shouldBe
-               (JWT.unregisteredClaims <$> theClaims)
-               (Just (Map.fromList [(sessionIdName, Aeson.String rawUUID)]))
+           (JWT.sub =<< theClaims) `shouldBe` (JWT.stringOrURI rawUUID)
   where
     rawUUID = "123e4567-e89b-12d3-a456-426655440000"
     Just uuid = UUID.fromText rawUUID
