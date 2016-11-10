@@ -11,8 +11,8 @@ packages:
     commit: f8c5459cc08896cc754ca24a73dfdfe1afa4b0a4
 
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
-extra-deps: 
-  - snap-cors-1.2.9
+extra-deps:
+  - snap-cors-1.2.10
 
 # Override default flag values for local packages and extra-deps
 flags: {}
