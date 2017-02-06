@@ -9,8 +9,8 @@ module Snaplet.Authentication
   , requireUser
   , withUser
   , makeSessionJSON
-  , module Q
-  , module X
+  , module Snaplet.Authentication.Queries
+  , module Snaplet.Authentication.Schema
   , AuthConfig(..)
   ) where
 
@@ -39,8 +39,8 @@ import           Snaplet.Authentication.Common
 import           Snaplet.Authentication.Exception
 import           Snaplet.Authentication.PasswordReset
 import           Snaplet.Authentication.Queries
-import qualified Snaplet.Authentication.Queries       as Q (getGithubAccessToken)
-import           Snaplet.Authentication.Schema        as X
+import qualified Snaplet.Authentication.Queries       (getGithubAccessToken)
+import           Snaplet.Authentication.Schema
 import           Snaplet.Authentication.Session
 
 ------------------------------------------------------------
