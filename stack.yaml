@@ -9,6 +9,7 @@ packages:
 - location:
     git: https://www.github.com/krisajenkins/kashmir
     commit: f8c5459cc08896cc754ca24a73dfdfe1afa4b0a4
+  extra-dep: true
 
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps:
