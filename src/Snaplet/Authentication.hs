@@ -28,7 +28,6 @@ import Data.Time
 import Data.UUID
 import Database.Esqueleto hiding (migrate)
 import qualified Database.Persist
-import Kashmir.Email
 import qualified Kashmir.Github as Github
 import Kashmir.Snap.Snaplet.Random
 import Kashmir.Snap.Utils
@@ -95,27 +94,57 @@ githubCallbackHandler redirectTarget =
   method GET $ requireParam "code" >>= processGithubAccessToken redirectTarget
 
 ------------------------------------------------------------
-processEmailPassword :: Email -> ByteString -> Handler b (Authentication b) ()
-processEmailPassword email password = do
-  matchingAccount <- handleSql (lookupByEmail email)
+registrationHandler ::  Handler b (Authentication b) ()
+registrationHandler =
+  method POST $ do
+    payload <- requireBoundedJSON 1024
+    connection <- getConnection
+    randomNumberGenerator <- view randomNumberGeneratorLens
+    uuid <- Snap.withTop randomNumberGenerator getRandom
+    maybeAccount <- liftIO $ createPasswordAccount payload uuid connection
+    case maybeAccount of
+      Nothing -> handleErrorWithMessage 409 "Conflict"
+      Just account -> do
+        logError $ "Created account: " <> encodeUtf8 (T.pack (show account))
+        authorizedAccountResponse account
+
+createPasswordAccount :: PasswordRegistration
+                      -> UUID
+                      -> ConnectionPool
+                      -> IO (Maybe Account)
+createPasswordAccount payload uuid connection = do
+  now <- getCurrentTime
+  account <- runSqlPersistMPool (createPasswordUser uuid now payload) connection
+  return account
+
+------------------------------------------------------------
+processEmailPassword :: Login -> Handler b (Authentication b) ()
+processEmailPassword payload = do
+  matchingAccount <- handleSql (lookupByEmail (loginEmail payload))
   case matchingAccount of
     Nothing -> unauthorized
         -- Validate password.
     Just (account, accountUidpwd) ->
       if validatePassword
            (encodeUtf8 (accountUidpwdPassword accountUidpwd))
-           password
+           (encodeUtf8 (loginPassword payload))
         then authorizedAccountResponse account
         else unauthorized
 
 emailPasswordLoginHandler :: Handler b (Authentication b) ()
 emailPasswordLoginHandler =
   method POST $ do
-    emailParam <- decodeUtf8 <$> requirePostParam "email"
-    passwordParam <- requirePostParam "password"
-    case parseEmail emailParam of
-      Left err -> malformedRequest (encodeUtf8 err)
-      Right email -> processEmailPassword email passwordParam
+    payload <- requireBoundedJSON 1024
+    matchingAccount <- handleSql (lookupByEmail (loginEmail payload))
+    case matchingAccount of
+      Nothing -> unauthorized
+          -- Validate password.
+      Just (account, accountUidpwd) ->
+        if validatePassword
+             (encodeUtf8 (accountUidpwdPassword accountUidpwd))
+             (encodeUtf8 (loginPassword payload))
+          then authorizedAccountResponse account
+          else unauthorized
 
 -- | Require that an authenticated AuthUser is present in the current session.
 -- This function has no DB cost - only checks to see if the client has passed a valid auth token.
