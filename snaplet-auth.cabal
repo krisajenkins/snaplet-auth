@@ -19,6 +19,7 @@ library
                      , Snaplet.Authentication.Session
   other-modules:       Snaplet.Authentication.Queries
                      , Snaplet.Authentication.Common
+                     , Snaplet.Authentication.Types
                      , Snaplet.Authentication.Exception
                      , Snaplet.Authentication.PasswordReset
                      , Snaplet.Authentication.Schema

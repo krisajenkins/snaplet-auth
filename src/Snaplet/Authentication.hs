@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -38,10 +39,9 @@ import Snaplet.Authentication.Common
 import Snaplet.Authentication.Exception
 import Snaplet.Authentication.PasswordReset
 import Snaplet.Authentication.Queries
-import qualified Snaplet.Authentication.Queries
-       (getGithubAccessToken)
 import Snaplet.Authentication.Schema
 import Snaplet.Authentication.Session
+import Snaplet.Authentication.Types
 
 ------------------------------------------------------------
 githubLoginUrl :: Github.Config -> Text
@@ -58,13 +58,13 @@ githubLoginHandler = do
   githubConfig <- view (authConfig . github)
   redirect . encodeUtf8 $ githubLoginUrl githubConfig
 
-upsertAccount
+upsertAccountFromGithub
   :: Github.Config
-  -> ConnectionPool
-  -> UUID
   -> ByteString
+  -> UUID
+  -> ConnectionPool
   -> IO (UTCTime, Key Account)
-upsertAccount githubConfig connection uuid code = do
+upsertAccountFromGithub githubConfig code uuid connection = do
   accessToken <-
     view Github.accessToken <$> Github.requestAccess githubConfig code
   user <- runReaderT Github.getUserDetails accessToken
@@ -83,7 +83,8 @@ processGithubAccessToken redirectTarget code = do
   connection <- getConnection
   randomNumberGenerator <- view randomNumberGeneratorLens
   uuid <- Snap.withTop randomNumberGenerator getRandom
-  (now, accountKey) <- liftIO $ upsertAccount githubConfig connection uuid code
+  (now, accountKey) <-
+    liftIO $ upsertAccountFromGithub githubConfig code uuid connection
   logError $
     "Upserted account key: " <> (toStrictByteString . unAccountKey) accountKey
   writeAuthToken (addUTCTime twoWeeks now) (unAccountKey accountKey)
@@ -108,7 +109,7 @@ registrationHandler =
         logError $ "Created account: " <> encodeUtf8 (T.pack (show account))
         authorizedAccountResponse account
 
-createPasswordAccount :: PasswordRegistration
+createPasswordAccount :: Registration
                       -> UUID
                       -> ConnectionPool
                       -> IO (Maybe Account)
@@ -204,6 +205,7 @@ initAuthentication redirectTarget _authConfig _poolLens _randomNumberGeneratorLe
   makeSnaplet "authentication" "Authentication Snaplet" Nothing $ do
     addRoutes
       [ ("/login/uidpwd", emailPasswordLoginHandler)
+      , ("/registration/uidpwd", registrationHandler)
       , ("/reset/uidpwd", emailPasswordResetHandler)
       , ("/reset/uidpwd/complete", emailPasswordResetCompletionHandler)
       , ("/login/github", githubLoginHandler)

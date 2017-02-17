@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE DeriveDataTypeable #-}
@@ -28,6 +30,7 @@ import Database.Persist.TH
 import GHC.Generics (Generic)
 import Kashmir.Aeson
 import Kashmir.Database.Postgresql
+import Snaplet.Authentication.Types
 import Kashmir.Email
 import Kashmir.Github as Github
 import Kashmir.UUID
@@ -47,6 +50,7 @@ share
     email Email sqltype=text
     password Text sqltype=text
     Primary email
+    UniqueEmail email
     deriving Read Show Eq Generic
 
   AccountGithub
@@ -99,21 +103,26 @@ createOrUpdateGithubUser uuid created theToken githubUser =
                 return (g ^. AccountGithubAccountId)
             return . unValue . head $ accountIds
 
+-- TODO This should handle failed inserts somehow.
 createPasswordUser :: UUID
                    -> UTCTime
-                   -> Email
-                   -> Text
-                   -> SqlPersistM (Key Account)
-createPasswordUser uuid created email password = do
+                   -> Registration
+                   -> SqlPersistM (Maybe Account)
+createPasswordUser uuid created payload = do
   Just hashedPassword <-
     liftIO $
-    hashPasswordUsingPolicy fastBcryptHashingPolicy (encodeUtf8 password)
-  accountKey <- insert $ Account uuid created
-  _ <-
-    insert
-      AccountUidpwd
-      { accountUidpwdAccountId = unAccountKey accountKey
-      , accountUidpwdEmail = email
-      , accountUidpwdPassword = decodeUtf8 hashedPassword
-      }
-  return accountKey
+    hashPasswordUsingPolicy
+      fastBcryptHashingPolicy
+      (encodeUtf8 (registrationPassword payload))
+  let account = Account uuid created
+  let accountUidpwd =
+        AccountUidpwd
+        { accountUidpwdAccountId = uuid
+        , accountUidpwdEmail = registrationEmail payload
+        , accountUidpwdPassword = decodeUtf8 hashedPassword
+        }
+  insertBy accountUidpwd >>= \case
+    Left existingEntity -> return Nothing
+    Right _ -> do
+      _ <- insert account
+      return $ Just account
