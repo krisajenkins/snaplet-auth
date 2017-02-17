@@ -115,8 +115,7 @@ createPasswordAccount :: Registration
                       -> IO (Maybe Account)
 createPasswordAccount payload uuid connection = do
   now <- getCurrentTime
-  account <- runSqlPersistMPool (createPasswordUser uuid now payload) connection
-  return account
+  runSqlPersistMPool (createPasswordUser uuid now payload) connection
 
 ------------------------------------------------------------
 processEmailPassword :: Login -> Handler b (Authentication b) ()
